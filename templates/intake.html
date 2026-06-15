@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}进油管理 - 加油站管理系统{% endblock %}
+
+{% block content %}
+<h2 class="page-title">🛢️ 进油管理</h2>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-title">📝 录入进油记录</div>
+        <form method="POST">
+            <div class="form-group">
+                <label>油品类型</label>
+                <select name="fuel_id" required>
+                    {% for fuel in fuels %}
+                    <option value="{{ fuel.id }}">{{ fuel.name }} (罐容: {{ fuel.tank_capacity }}升)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>进油量 (升)</label>
+                    <input type="number" name="volume" step="0.01" min="0" required placeholder="例如：10000">
+                </div>
+                <div class="form-group">
+                    <label>成本价 (元/升)</label>
+                    <input type="number" name="cost_price" step="0.001" min="0" required placeholder="例如：7.250">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>供应商</label>
+                    <input type="text" name="supplier" placeholder="例如：中石油">
+                </div>
+                <div class="form-group">
+                    <label>油罐车号</label>
+                    <input type="text" name="truck_no" placeholder="例如：京A12345">
+                </div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button type="submit" class="btn btn-primary">确认录入</button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="card">
+        <div class="card-title">ℹ️ 进油说明</div>
+        <div style="line-height: 1.8; color: #666; font-size: 14px;">
+            <p><strong>移动加权平均成本：</strong>每次进货后，系统会自动重新计算库存的平均成本。</p>
+            <p><strong>计算公式：</strong>新平均成本 = (原库存总成本 + 新进油总成本) / (原库存量 + 新进油量)</p>
+            <p><strong>注意事项：</strong></p>
+            <ul style="margin-left: 20px; margin-top: 5px;">
+                <li>请确保进油量准确无误</li>
+                <li>成本价为含税进价</li>
+                <li>录入后系统自动更新库存</li>
+                <li>进货记录不可删除，请谨慎操作</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">📋 最近进油记录</div>
+    {% if intake_records %}
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>油品</th>
+                <th>数量 (升)</th>
+                <th>成本价 (元/升)</th>
+                <th>总成本 (元)</th>
+                <th>供应商</th>
+                <th>车号</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for record in intake_records %}
+            <tr>
+                <td style="font-size: 13px;">{{ record.intake_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="tag tag-blue">{{ record.fuel.name }}</span></td>
+                <td>{{ '%.2f'|format(record.volume) }}</td>
+                <td>¥{{ '%.3f'|format(record.cost_price) }}</td>
+                <td><strong>¥{{ '%.2f'|format(record.total_cost or 0) }}</strong></td>
+                <td>{{ record.supplier or '-' }}</td>
+                <td>{{ record.truck_no or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 30px;">暂无进油记录</p>
+    {% endif %}
+</div>
+
+{% endblock %}

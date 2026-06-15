@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}加油站管理系统{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+            padding: 0 30px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header h1::before {
+            content: '⛽';
+            font-size: 24px;
+        }
+        .nav {
+            display: flex;
+            gap: 5px;
+        }
+        .nav a {
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nav a:hover, .nav a.active {
+            background: rgba(255,255,255,0.15);
+            color: white;
+        }
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 60px;
+            bottom: 0;
+            width: 200px;
+            background: white;
+            border-right: 1px solid #e8e8e8;
+            padding: 20px 0;
+        }
+        .sidebar a {
+            display: block;
+            padding: 12px 25px;
+            color: #555;
+            text-decoration: none;
+            font-size: 14px;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .sidebar a:hover {
+            background: #f5f7fa;
+            color: #1677ff;
+        }
+        .sidebar a.active {
+            background: #e6f4ff;
+            color: #1677ff;
+            border-left-color: #1677ff;
+        }
+        .main {
+            margin-left: 200px;
+            margin-top: 60px;
+            padding: 25px;
+            min-height: calc(100vh - 60px);
+        }
+        .page-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1a1a2e;
+        }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            margin-bottom: 20px;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #1a1a2e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .flash-messages {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .flash {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .flash.success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .flash.error { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #1677ff; color: white; }
+        .btn-primary:hover { background: #4096ff; }
+        .btn-success { background: #52c41a; color: white; }
+        .btn-success:hover { background: #73d13d; }
+        .btn-warning { background: #faad14; color: white; }
+        .btn-warning:hover { background: #ffc53d; }
+        .btn-danger { background: #ff4d4f; color: white; }
+        .btn-danger:hover { background: #ff7875; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        th {
+            background: #fafafa;
+            font-weight: 600;
+            color: #555;
+        }
+        tr:hover {
+            background: #fafafa;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #1677ff;
+            box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .tag-green { background: #f6ffed; color: #52c41a; }
+        .tag-red { background: #fff2f0; color: #ff4d4f; }
+        .tag-blue { background: #e6f4ff; color: #1677ff; }
+        .tag-orange { background: #fff7e6; color: #fa8c16; }
+        .tag-purple { background: #f9f0ff; color: #722ed1; }
+        .stat-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .stat-card .stat-label {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+        .stat-card .stat-change {
+            font-size: 12px;
+            margin-top: 6px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .progress-fill.green { background: linear-gradient(90deg, #52c41a, #73d13d); }
+        .progress-fill.yellow { background: linear-gradient(90deg, #faad14, #ffc53d); }
+        .progress-fill.red { background: linear-gradient(90deg, #ff4d4f, #ff7875); }
+        .warning-banner {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .warning-banner.danger {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+        }
+        .warning-banner.warning {
+            background: #fff7e6;
+            border: 1px solid #ffe7ba;
+            color: #fa8c16;
+        }
+        .warning-banner .icon {
+            font-size: 24px;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="header">
+        <h1>加油站库存与定价系统</h1>
+        <nav class="nav">
+            <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">仪表盘</a>
+            <a href="{{ url_for('intake') }}" class="{% if request.endpoint == 'intake' %}active{% endif %}">进油管理</a>
+            <a href="{{ url_for('pricing') }}" class="{% if request.endpoint == 'pricing' or request.endpoint == 'pricing_rules' %}active{% endif %}">定价中心</a>
+            <a href="{{ url_for('sales_report') }}" class="{% if request.endpoint == 'sales_report' %}active{% endif %}">销售报表</a>
+            <a href="{{ url_for('member_promotion') }}" class="{% if request.endpoint == 'member_promotion' %}active{% endif %}">会员促销</a>
+        </nav>
+    </div>
+    
+    <div class="sidebar">
+        <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">📊 总览仪表盘</a>
+        <a href="{{ url_for('intake') }}" class="{% if request.endpoint == 'intake' %}active{% endif %}">🛢️ 进油记录</a>
+        <a href="{{ url_for('pricing') }}" class="{% if request.endpoint == 'pricing' or request.endpoint == 'pricing_rules' %}active{% endif %}">💰 油品定价</a>
+        <a href="{{ url_for('competitor') }}" class="{% if request.endpoint == 'competitor' %}active{% endif %}">🏪 竞争对手价格</a>
+        <a href="{{ url_for('sales_report') }}" class="{% if request.endpoint == 'sales_report' %}active{% endif %}">📈 销售报表</a>
+        <a href="{{ url_for('price_history') }}" class="{% if request.endpoint == 'price_history' %}active{% endif %}">📋 价格历史</a>
+        <a href="{{ url_for('member_promotion') }}" class="{% if request.endpoint == 'member_promotion' %}active{% endif %}">🎁 会员促销</a>
+    </div>
+    
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category if category else 'success' }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </div>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

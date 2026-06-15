@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% block title %}仪表盘 - 加油站管理系统{% endblock %}
+
+{% block content %}
+<h2 class="page-title">📊 总览仪表盘</h2>
+
+{% if warnings %}
+    {% for warning in warnings %}
+        <div class="warning-banner {{ warning.level }}">
+            <span class="icon">⚠️</span>
+            <div>
+                <strong>{{ warning.fuel_name }} 库存预警</strong>
+                {% if warning.shortage > 0 %}
+                    ：预测24小时销量将超过当前库存，缺口约 {{ warning.shortage }} 升。
+                {% else %}
+                    ：库存周转天数不足2天。
+                {% endif %}
+                建议进货量：{{ warning.suggested_order }} 升
+            </div>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="stat-label">今日销售额</div>
+        <div class="stat-value">¥{{ today_revenue }}</div>
+        <div class="stat-change" style="color: #52c41a;">实时更新</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">今日毛利润</div>
+        <div class="stat-value" style="color: #52c41a;">¥{{ today_profit }}</div>
+        <div class="stat-change" style="color: #52c41a;">实时计算</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">库存油品数量</div>
+        <div class="stat-value">{{ inventory_data|length }} 种</div>
+        <div class="stat-change" style="color: #888;">全部油品</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">预警数量</div>
+        <div class="stat-value" style="color: {{ '#ff4d4f' if warnings else '#52c41a' }};">{{ warnings|length }}</div>
+        <div class="stat-change" style="color: {{ '#ff4d4f' if warnings else '#52c41a' }};">需要关注</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <span>🛢️ 库存概览</span>
+        <a href="{{ url_for('intake') }}" class="btn btn-primary btn-sm">录入进油</a>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>油品</th>
+                <th>当前库存</th>
+                <th>库存占比</th>
+                <th>平均成本</th>
+                <th>当前售价</th>
+                <th>竞争价格</th>
+                <th>预测24h销量</th>
+                <th>库存可售</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in inventory_data %}
+            <tr>
+                <td><strong>{{ item.name }}</strong></td>
+                <td>{{ item.current_stock }} 升</td>
+                <td style="min-width: 150px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="progress-bar" style="flex: 1;">
+                            <div class="progress-fill 
+                                {% if item.stock_percent > 50 %}green
+                                {% elif item.stock_percent > 20 %}yellow
+                                {% else %}red{% endif %}" 
+                                style="width: {{ item.stock_percent }}%;"></div>
+                        </div>
+                        <span style="font-size: 12px; min-width: 50px;">{{ item.stock_percent }}%</span>
+                    </div>
+                </td>
+                <td>¥{{ item.avg_cost }}/升</td>
+                <td style="color: #1677ff; font-weight: 600;">¥{{ item.current_price }}/升</td>
+                <td>
+                    {% if item.competitor_price %}
+                        ¥{{ '%.2f'|format(item.competitor_price) }}/升
+                    {% else %}
+                        <span style="color: #999;">暂无数据</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.predicted_24h }} 升</td>
+                <td>
+                    <span class="tag {% if item.stock_days > 3 %}tag-green{% elif item.stock_days > 1 %}tag-orange{% else %}tag-red{% endif %}">
+                        {{ item.stock_days }} 天
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-title">
+            <span>💰 最新价格调整</span>
+            <a href="{{ url_for('price_history') }}" class="btn btn-sm" style="background: #f0f0f0; color: #666;">查看全部</a>
+        </div>
+        {% if price_histories %}
+        <table>
+            <thead>
+                <tr>
+                    <th>油品</th>
+                    <th>调整</th>
+                    <th>类型</th>
+                    <th>时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ph in price_histories[:8] %}
+                <tr>
+                    <td>{{ ph.fuel.name }}</td>
+                    <td>
+                        {{ '%.2f'|format(ph.old_price) }} → 
+                        <strong style="color: {% if ph.new_price > ph.old_price %}#ff4d4f{% else %}#52c41a{% endif %};">
+                            {{ '%.2f'|format(ph.new_price) }}
+                        </strong>
+                    </td>
+                    <td>
+                        <span class="tag {% if ph.change_type == 'auto' %}tag-blue{% else %}tag-purple{% endif %}">
+                            {{ '自动' if ph.change_type == 'auto' else '手动' }}
+                        </span>
+                    </td>
+                    <td style="font-size: 12px; color: #888;">{{ ph.change_time.strftime('%m-%d %H:%M') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #999; text-align: center; padding: 20px;">暂无价格调整记录</p>
+        {% endif %}
+    </div>
+    
+    <div class="card">
+        <div class="card-title">
+            <span>⚡ 快捷操作</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <a href="{{ url_for('intake') }}" class="btn btn-primary" style="text-align: center; padding: 20px;">
+                🛢️<br>录入进油
+            </a>
+            <a href="{{ url_for('pricing') }}" class="btn btn-success" style="text-align: center; padding: 20px;">
+                💰<br>调整价格
+            </a>
+            <a href="{{ url_for('competitor') }}" class="btn btn-warning" style="text-align: center; padding: 20px;">
+                📊<br>导入竞争价
+            </a>
+            <a href="{{ url_for('sales_report') }}" class="btn" style="background: #722ed1; color: white; text-align: center; padding: 20px;">
+                📈<br>查看报表
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+setTimeout(function() {
+    var flashes = document.querySelectorAll('.flash');
+    flashes.forEach(function(f) {
+        f.style.opacity = '0';
+        f.style.transition = 'opacity 0.3s';
+        setTimeout(function() { f.remove(); }, 300);
+    });
+}, 3000);
+</script>
+{% endblock %}

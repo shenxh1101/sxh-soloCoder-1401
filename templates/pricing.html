@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}定价中心 - 加油站管理系统{% endblock %}
+
+{% block content %}
+<h2 class="page-title">💰 定价中心</h2>
+
+<div class="card">
+    <div class="card-title">🎯 当前价格</div>
+    <div class="grid-3">
+        {% for fuel in fuels %}
+        <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 20px; text-align: center;">
+            <div style="font-size: 16px; color: #666; margin-bottom: 10px;">{{ fuel.name }}</div>
+            <div style="font-size: 36px; font-weight: 700; color: #1677ff;">¥{{ '%.2f'|format(fuel.current_price) }}</div>
+            <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                更新于 {{ fuel.price_update_time.strftime('%m-%d %H:%M') if fuel.price_update_time else '未知' }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-title">✏️ 手动调价</div>
+        <form method="POST">
+            <div class="form-group">
+                <label>选择油品</label>
+                <select name="fuel_id" required>
+                    {% for fuel in fuels %}
+                    <option value="{{ fuel.id }}">{{ fuel.name }} - 当前 ¥{{ '%.2f'|format(fuel.current_price) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>新价格 (元/升)</label>
+                <input type="number" name="new_price" step="0.01" min="0" required placeholder="输入新售价">
+            </div>
+            <div class="form-group">
+                <label>调整原因</label>
+                <input type="text" name="reason" placeholder="例如：市场价格调整">
+            </div>
+            <button type="submit" class="btn btn-primary">确认调价</button>
+        </form>
+    </div>
+    
+    <div class="card">
+        <div class="card-title">⚙️ 自动定价规则</div>
+        {% for fuel in fuels %}
+            {% set rule = fuel.id in pricing_rules|map(attribute='fuel_id')|list and pricing_rules|selectattr('fuel_id', '==', fuel.id)|first %}
+            <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                <form method="POST" action="{{ url_for('pricing_rules') }}">
+                    <input type="hidden" name="fuel_id" value="{{ fuel.id }}">
+                    <div style="font-weight: 600; margin-bottom: 10px;">{{ fuel.name }}</div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select name="rule_type">
+                            <option value="lower" {% if rule and rule.rule_type == 'lower' %}selected{% endif %}>比竞争对手低</option>
+                            <option value="same" {% if rule and rule.rule_type == 'same' %}selected{% endif %}>与竞争对手持平</option>
+                            <option value="higher" {% if rule and rule.rule_type == 'higher' %}selected{% endif %}>比竞争对手高</option>
+                        </select>
+                        <input type="number" name="price_diff" step="0.01" value="{{ rule.price_diff if rule else 0 }}" style="width: 80px;">
+                        <span style="color: #666;">元</span>
+                        <label style="display: flex; align-items: center; gap: 5px; margin-left: auto;">
+                            <input type="checkbox" name="is_active" {% if rule and rule.is_active %}checked{% endif %}>
+                            启用
+                        </label>
+                        <button type="submit" class="btn btn-sm btn-primary">保存</button>
+                    </div>
+                </form>
+                <div style="margin-top: 10px;">
+                    <a href="{{ url_for('auto_apply_pricing', fuel_id=fuel.id) }}" class="btn btn-sm btn-success">
+                        立即应用自动定价
+                    </a>
+                    {% set comp_price = fuel.id %}
+                    <span style="font-size: 12px; color: #999; margin-left: 10px;">
+                        最新竞争价：
+                        {% if competitor_prices is defined %}
+                            测试
+                        {% else %}
+                            请先导入
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <span>📋 最近价格调整记录</span>
+        <a href="{{ url_for('price_history') }}" class="btn btn-sm" style="background: #f0f0f0; color: #666;">查看全部历史</a>
+    </div>
+    {% if price_histories %}
+    <table>
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>油品</th>
+                <th>原价格</th>
+                <th>新价格</th>
+                <th>变动</th>
+                <th>类型</th>
+                <th>原因</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ph in price_histories %}
+            <tr>
+                <td style="font-size: 13px;">{{ ph.change_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="tag tag-blue">{{ ph.fuel.name }}</span></td>
+                <td>¥{{ '%.2f'|format(ph.old_price) }}</td>
+                <td style="font-weight: 600;">¥{{ '%.2f'|format(ph.new_price) }}</td>
+                <td style="color: {% if ph.new_price > ph.old_price %}#ff4d4f{% else %}#52c41a{% endif %};">
+                    {% if ph.new_price > ph.old_price %}+{% endif %}{{ '%.2f'|format(ph.new_price - ph.old_price) }}
+                </td>
+                <td>
+                    <span class="tag {% if ph.change_type == 'auto' %}tag-blue{% else %}tag-purple{% endif %}">
+                        {{ '自动' if ph.change_type == 'auto' else '手动' }}
+                    </span>
+                </td>
+                <td style="font-size: 13px; color: #888;">{{ ph.reason or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 30px;">暂无价格调整记录</p>
+    {% endif %}
+</div>
+
+{% endblock %}

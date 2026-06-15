@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}竞争对手价格 - 加油站管理系统{% endblock %}
+
+{% block content %}
+<h2 class="page-title">🏪 竞争对手价格</h2>
+
+<div class="card">
+    <div class="card-title">📥 导入CSV文件</div>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>选择CSV文件</label>
+            <input type="file" name="csv_file" accept=".csv" required style="padding: 8px; border: 1px dashed #d9d9d9; border-radius: 6px; width: 100%;">
+        </div>
+        <div style="margin-top: 10px;">
+            <button type="submit" class="btn btn-primary">导入数据</button>
+        </div>
+        <div style="margin-top: 15px; padding: 15px; background: #f9f9f9; border-radius: 6px; font-size: 13px; color: #666;">
+            <strong>CSV格式要求：</strong>
+            <p style="margin-top: 8px;">表头需包含：date（日期，格式YYYY-MM-DD）、92号/92#/gasoline_92、95号/95#/gasoline_95、柴油/0#/diesel</p>
+            <p>示例：</p>
+            <code style="display: block; background: white; padding: 8px; margin-top: 5px; border-radius: 4px;">
+date,92#,95#,柴油<br>
+2024-01-15,7.89,8.42,7.56
+            </code>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-title">📊 最近30天价格趋势</div>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    {% for fuel in fuels %}
+                    <th>{{ fuel.name }} (元/升)</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set max_days = [] %}
+                {% for fuel in fuels %}
+                    {% if competitor_prices[fuel.id]|length > max_days|length %}
+                        {% set _ = max_days.append(fuel.id) %}
+                    {% endif %}
+                {% endfor %}
+                
+                {% set date_set = [] %}
+                {% for fuel in fuels %}
+                    {% for cp in competitor_prices[fuel.id] %}
+                        {% if cp.record_date not in date_set %}
+                            {% set _ = date_set.append(cp.record_date) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+                
+                {% set sorted_dates = date_set|sort(reverse=True) %}
+                
+                {% for d in sorted_dates[:30] %}
+                <tr>
+                    <td>{{ d.strftime('%Y-%m-%d') }}</td>
+                    {% for fuel in fuels %}
+                        {% set found = none %}
+                        {% for cp in competitor_prices[fuel.id] %}
+                            {% if cp.record_date == d %}
+                                {% set found = cp %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if found %}
+                        <td>¥{{ '%.2f'|format(found.price) }}</td>
+                        {% else %}
+                        <td style="color: #ccc;">-</td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

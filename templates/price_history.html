@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}价格历史 - 加油站管理系统{% endblock %}
+
+{% block content %}
+<h2 class="page-title">📋 价格调整历史</h2>
+
+<div class="card">
+    <div class="card-title">🔍 筛选条件</div>
+    <form method="GET" style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="form-group" style="margin-bottom: 0; min-width: 150px;">
+            <label>油品类型</label>
+            <select name="fuel_id">
+                <option value="">全部油品</option>
+                {% for fuel in fuels %}
+                <option value="{{ fuel.id }}" {% if selected_fuel == fuel.id %}selected{% endif %}>{{ fuel.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 0; min-width: 150px;">
+            <label>时间范围</label>
+            <select name="days">
+                <option value="7" {% if days == 7 %}selected{% endif %}>最近7天</option>
+                <option value="15" {% if days == 15 %}selected{% endif %}>最近15天</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>最近30天</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>最近90天</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">查询</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <span>📊 调价记录 (共 {{ price_histories|length }} 条)</span>
+    </div>
+    {% if price_histories %}
+    <table>
+        <thead>
+            <tr>
+                <th>序号</th>
+                <th>调整时间</th>
+                <th>油品</th>
+                <th>原价格</th>
+                <th>新价格</th>
+                <th>价格变动</th>
+                <th>变动幅度</th>
+                <th>调整类型</th>
+                <th>原因说明</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ph in price_histories %}
+            {% set change = ph.new_price - ph.old_price %}
+            {% set change_pct = (change / ph.old_price * 100) if ph.old_price else 0 %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td style="font-size: 13px;">{{ ph.change_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td><span class="tag tag-blue">{{ ph.fuel.name }}</span></td>
+                <td style="color: #999;">¥{{ '%.2f'|format(ph.old_price) }}</td>
+                <td style="font-weight: 600; font-size: 15px;">¥{{ '%.2f'|format(ph.new_price) }}</td>
+                <td style="color: {% if change > 0 %}#ff4d4f{% elif change < 0 %}#52c41a{% else %}#999{% endif %}; font-weight: 600;">
+                    {% if change > 0 %}+{% endif %}{{ '%.2f'|format(change) }}
+                </td>
+                <td style="color: {% if change > 0 %}#ff4d4f{% elif change < 0 %}#52c41a{% else %}#999{% endif %};">
+                    {% if change > 0 %}+{% endif %}{{ '%.2f'|format(change_pct) }}%
+                </td>
+                <td>
+                    <span class="tag {% if ph.change_type == 'auto' %}tag-blue{% else %}tag-purple{% endif %}">
+                        {{ '自动调整' if ph.change_type == 'auto' else '手动调整' }}
+                    </span>
+                </td>
+                <td style="font-size: 13px; color: #666; max-width: 200px;">{{ ph.reason or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 40px;">暂无价格调整记录</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-title">💡 说明</div>
+    <ul style="line-height: 1.8; color: #666; font-size: 14px; margin-left: 20px;">
+        <li><strong>手动调整</strong>：由人工操作的价格调整，记录调整原因</li>
+        <li><strong>自动调整</strong>：根据定价规则和竞争对手价格自动调整</li>
+        <li>价格调整记录保留完整历史，可追溯近30天内所有调价操作</li>
+        <li>点击"定价中心"可进行新的价格调整</li>
+    </ul>
+</div>
+
+{% endblock %}
