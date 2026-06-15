@@ -144,10 +144,35 @@ def pricing():
     pricing_rules = PricingRule.query.all()
     price_histories = PriceHistory.query.order_by(PriceHistory.change_time.desc()).limit(30).all()
     
+    competitor_prices = {}
+    auto_price_previews = {}
+    rule_map = {r.fuel_id: r for r in pricing_rules}
+    
+    for fuel in fuels:
+        comp_info = get_latest_competitor_price_info(fuel.id)
+        competitor_prices[fuel.id] = comp_info
+        
+        rule = rule_map.get(fuel.id)
+        if rule and rule.is_active and comp_info:
+            preview_price = calculate_auto_price(fuel.id, rule)
+            if preview_price is not None:
+                auto_price_previews[fuel.id] = {
+                    'current_price': fuel.current_price,
+                    'competitor_price': comp_info['price'],
+                    'rule_type': rule.rule_type,
+                    'rule_type_name': rule.rule_type_name,
+                    'price_diff': rule.price_diff,
+                    'preview_price': preview_price,
+                    'price_change': round(preview_price - fuel.current_price, 2),
+                    'change_pct': round((preview_price - fuel.current_price) / fuel.current_price * 100, 2)
+                }
+    
     return render_template('pricing.html',
                          fuels=fuels,
                          pricing_rules=pricing_rules,
-                         price_histories=price_histories)
+                         price_histories=price_histories,
+                         competitor_prices=competitor_prices,
+                         auto_price_previews=auto_price_previews)
 
 @app.route('/pricing/rules', methods=['POST'])
 def pricing_rules():
@@ -224,6 +249,139 @@ def auto_apply_pricing(fuel_id):
     
     flash(f'自动定价已应用，{fuel.name} 新价格为 {new_price:.2f} 元/升', 'success')
     return redirect(url_for('pricing'))
+
+@app.route('/pricing/batch_preview')
+def batch_preview_pricing():
+    fuels = Fuel.query.all()
+    rule_map = {r.fuel_id: r for r in PricingRule.query.filter_by(is_active=True).all()}
+    
+    preview_data = []
+    for fuel in fuels:
+        comp_price = get_latest_competitor_price(fuel.id)
+        rule = rule_map.get(fuel.id)
+        
+        if comp_price is None:
+            preview_data.append({
+                'fuel_id': fuel.id,
+                'fuel_name': fuel.name,
+                'current_price': fuel.current_price,
+                'competitor_price': None,
+                'preview_price': None,
+                'price_change': None,
+                'change_pct': None,
+                'has_rule': rule is not None,
+                'error': '无竞争对手价格'
+            })
+            continue
+        
+        if not rule:
+            preview_data.append({
+                'fuel_id': fuel.id,
+                'fuel_name': fuel.name,
+                'current_price': fuel.current_price,
+                'competitor_price': comp_price,
+                'preview_price': None,
+                'price_change': None,
+                'change_pct': None,
+                'has_rule': False,
+                'error': '无启用的定价规则'
+            })
+            continue
+        
+        preview_price = calculate_auto_price(fuel.id, rule)
+        price_change = round(preview_price - fuel.current_price, 2)
+        change_pct = round(price_change / fuel.current_price * 100, 2)
+        
+        preview_data.append({
+            'fuel_id': fuel.id,
+            'fuel_name': fuel.name,
+            'current_price': fuel.current_price,
+            'competitor_price': comp_price,
+            'rule_type': rule.rule_type,
+            'rule_type_name': rule.rule_type_name,
+            'price_diff': rule.price_diff,
+            'preview_price': preview_price,
+            'price_change': price_change,
+            'change_pct': change_pct,
+            'has_rule': True,
+            'needs_change': abs(price_change) >= 0.001
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': preview_data
+    })
+
+@app.route('/pricing/batch_apply', methods=['POST'])
+def batch_apply_pricing():
+    fuels = Fuel.query.all()
+    rule_map = {r.fuel_id: r for r in PricingRule.query.filter_by(is_active=True).all()}
+    
+    applied_count = 0
+    skipped_count = 0
+    results = []
+    now = datetime.now()
+    
+    for fuel in fuels:
+        comp_price = get_latest_competitor_price(fuel.id)
+        rule = rule_map.get(fuel.id)
+        
+        if comp_price is None or not rule:
+            skipped_count += 1
+            continue
+        
+        new_price = calculate_auto_price(fuel.id, rule)
+        old_price = fuel.current_price
+        
+        if abs(new_price - old_price) < 0.001:
+            skipped_count += 1
+            results.append({
+                'fuel_name': fuel.name,
+                'status': 'skipped',
+                'message': f'价格无需调整，已为 {new_price:.2f} 元/升'
+            })
+            continue
+        
+        fuel.current_price = new_price
+        fuel.price_update_time = now
+        
+        if rule.rule_type == 'same':
+            reason_text = '自动定价：与竞争对手价格持平'
+        else:
+            reason_text = f'自动定价：比竞争对手{rule.rule_type_name}{abs(rule.price_diff):.2f}元'
+        
+        price_history = PriceHistory(
+            fuel_id=fuel.id,
+            old_price=old_price,
+            new_price=new_price,
+            change_time=now,
+            change_type='auto',
+            reason=reason_text
+        )
+        db.session.add(price_history)
+        
+        applied_count += 1
+        results.append({
+            'fuel_name': fuel.name,
+            'status': 'applied',
+            'old_price': old_price,
+            'new_price': new_price,
+            'price_change': round(new_price - old_price, 2)
+        })
+    
+    db.session.commit()
+    
+    if applied_count > 0:
+        flash(f'批量定价已完成，成功调整 {applied_count} 种油品价格，跳过 {skipped_count} 种', 'success')
+    else:
+        flash(f'所有油品价格无需调整，共跳过 {skipped_count} 种', 'info')
+    
+    return jsonify({
+        'success': True,
+        'applied_count': applied_count,
+        'skipped_count': skipped_count,
+        'results': results
+    })
 
 @app.route('/competitor', methods=['GET', 'POST'])
 def competitor():
@@ -336,10 +494,13 @@ def sales_report():
 def price_history():
     days = int(request.args.get('days', 30))
     fuel_id = request.args.get('fuel_id', type=int)
+    change_type = request.args.get('change_type', '')
     
     query = PriceHistory.query
     if fuel_id:
         query = query.filter_by(fuel_id=fuel_id)
+    if change_type:
+        query = query.filter_by(change_type=change_type)
     
     price_histories = query.order_by(PriceHistory.change_time.desc())\
         .filter(PriceHistory.change_time >= datetime.now() - timedelta(days=days)).all()
@@ -350,7 +511,76 @@ def price_history():
                          price_histories=price_histories,
                          fuels=fuels,
                          selected_fuel=fuel_id,
+                         selected_type=change_type,
                          days=days)
+
+@app.route('/price/rollback/<int:history_id>', methods=['POST'])
+def rollback_price(history_id):
+    history = PriceHistory.query.get(history_id)
+    if not history:
+        return jsonify({'success': False, 'message': '调价记录不存在'})
+    
+    fuel = Fuel.query.get(history.fuel_id)
+    if not fuel:
+        return jsonify({'success': False, 'message': '油品不存在'})
+    
+    target_price = history.old_price
+    current_price = fuel.current_price
+    
+    if abs(target_price - current_price) < 0.001:
+        return jsonify({
+            'success': False, 
+            'message': f'{fuel.name} 当前价格已为 ¥{target_price:.2f}，无需回滚'
+        })
+    
+    now = datetime.now()
+    old_price = current_price
+    
+    fuel.current_price = target_price
+    fuel.price_update_time = now
+    
+    rollback_history = PriceHistory(
+        fuel_id=history.fuel_id,
+        old_price=old_price,
+        new_price=target_price,
+        change_time=now,
+        change_type='manual',
+        reason=f'价格回滚：恢复到 {history.change_time.strftime("%Y-%m-%d %H:%M:%S")} 调价前的价格 ¥{target_price:.2f}（原因为：{history.reason or "手动调整"}）'
+    )
+    db.session.add(rollback_history)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': f'{fuel.name} 价格已从 ¥{old_price:.2f} 回滚到 ¥{target_price:.2f}',
+        'fuel_name': fuel.name,
+        'old_price': old_price,
+        'new_price': target_price
+    })
+
+@app.route('/member/promotion/calculate', methods=['GET'])
+def calculate_promo_impact_api():
+    discount = request.args.get('discount', type=float)
+    use_active = request.args.get('use_active', 'true').lower() == 'true'
+    
+    if discount is not None and discount <= 0:
+        return jsonify({
+            'success': False,
+            'message': '优惠金额必须大于0'
+        })
+    
+    if discount is not None and discount >= 10:
+        return jsonify({
+            'success': False,
+            'message': '优惠金额不能超过10元'
+        })
+    
+    impact_data = calculate_promotion_impact(discount=discount, use_active_promo=use_active)
+    
+    return jsonify({
+        'success': True,
+        'data': impact_data
+    })
 
 @app.route('/member/promotion', methods=['GET', 'POST'])
 def member_promotion():
@@ -506,4 +736,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5001)

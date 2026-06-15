@@ -15,31 +15,64 @@
 </div>
 {% endif %}
 
-<div class="card">
-    <div class="card-title">⚙️ 促销设置</div>
-    <form method="POST" style="max-width: 500px;">
-        <div class="form-group">
-            <label>每升优惠金额 (元)</label>
-            <input type="number" name="discount" step="0.01" min="0" max="5" value="0.5" {% if promo_map %}disabled{% endif %}>
-            <small style="color: #999;">建议设置 0.3 - 0.8 元/升</small>
+<div class="grid-2">
+    <div class="card">
+        <div class="card-title">⚙️ 促销设置</div>
+        <form method="POST" style="max-width: 500px;">
+            <div class="form-group">
+                <label>每升优惠金额 (元)</label>
+                <input type="number" name="discount" id="discountInput" step="0.01" min="0.01" max="5" value="{% if promo_map %}{{ promo_map.values()|first.discount }}{% else %}0.5{% endif %}" {% if promo_map %}disabled{% endif %} oninput="updatePromoPreview()">
+                <small style="color: #999;">建议设置 0.3 - 0.8 元/升，优惠越大销量提升越多</small>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                {% if not promo_map %}
+                <button type="submit" name="action" value="activate" class="btn btn-success" onclick="return confirm('确定要启动会员日促销吗？系统将自动模拟当日促销销售数据。')">
+                    🎉 启动会员日促销
+                </button>
+                {% else %}
+                <button type="submit" name="action" value="deactivate" class="btn btn-warning" onclick="return confirm('确定要结束会员日促销吗？')">
+                    ⏹️ 结束促销
+                </button>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+    
+    {% if promo_map %}
+    <div class="card">
+        <div class="card-title">💰 促销进行中 - 价格对比</div>
+        <div class="grid-3" style="gap: 15px;">
+            {% for fuel in fuels %}
+            {% set promo = promo_map.get(fuel.id) %}
+            <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 15px; text-align: center; background: {% if promo %}#fffbe6{% else %}#fafafa{% endif %};">
+                <div style="font-size: 14px; color: #666; margin-bottom: 8px;">{{ fuel.name }}</div>
+                <div style="font-size: 13px; color: #999; text-decoration: line-through;">
+                    原价：¥{{ '%.2f'|format(promo.original_price) if promo else '-' }}
+                </div>
+                <div style="font-size: 24px; font-weight: 700; color: #ff4d4f; margin: 5px 0;">
+                    ¥{{ '%.2f'|format(promo.promo_price) if promo else '-' }}
+                </div>
+                <div style="font-size: 12px; color: #52c41a;">
+                    ↓ {{ '%.2f'|format(promo.discount) if promo else '0.00' }} 元
+                </div>
+            </div>
+            {% endfor %}
         </div>
-        <div style="display: flex; gap: 10px;">
-            {% if not promo_map %}
-            <button type="submit" name="action" value="activate" class="btn btn-success" onclick="return confirm('确定要启动会员日促销吗？系统将自动模拟当日促销销售数据。')">
-                🎉 启动会员日促销
-            </button>
-            {% else %}
-            <button type="submit" name="action" value="deactivate" class="btn btn-warning" onclick="return confirm('确定要结束会员日促销吗？')">
-                ⏹️ 结束促销
-            </button>
-            {% endif %}
+        <div style="margin-top: 15px; padding: 12px; background: #f0f5ff; border-radius: 6px; font-size: 13px; color: #1677ff;">
+            💡 促销结束后价格将自动恢复为原价，所有调价记录会保留在价格历史中
         </div>
-    </form>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
-    <div class="card-title">📊 促销利润影响测算</div>
-    <div class="stat-cards" style="margin-bottom: 20px;">
+    <div class="card-title">
+        <span>📊 促销利润影响测算</span>
+        <span style="font-size: 12px; color: #999; font-weight: normal;" id="calcStatus">
+            {% if promo_map %}基于当前促销优惠测算{% else %}实时测算中...{% endif %}
+        </span>
+    </div>
+    <div class="stat-cards" style="margin-bottom: 20px;" id="impactStats">
         <div class="stat-card">
             <div class="stat-label">正常日毛利</div>
             <div class="stat-value" style="font-size: 22px;">¥{{ impact_data.total_normal_profit }}</div>
@@ -52,24 +85,25 @@
         </div>
         <div class="stat-card">
             <div class="stat-label">利润差额</div>
-            <div class="stat-value" style="font-size: 22px; color: {% if impact_data.total_profit_diff >= 0 %}#52c41a{% else %}#ff4d4f{% endif %};">
+            <div class="stat-value" style="font-size: 22px; color: {% if impact_data.total_profit_diff >= 0 %}#52c41a{% else %}#ff4d4f{% endif %};" id="profitDiff">
                 {% if impact_data.total_profit_diff >= 0 %}+{% endif %}{{ impact_data.total_profit_diff }}
             </div>
         </div>
         <div class="stat-card">
             <div class="stat-label">营收差额</div>
-            <div class="stat-value" style="font-size: 22px; color: #1677ff;">
+            <div class="stat-value" style="font-size: 22px; color: #1677ff;" id="revenueDiff">
                 {% if impact_data.total_revenue_diff >= 0 %}+{% endif %}{{ impact_data.total_revenue_diff }}
             </div>
         </div>
     </div>
     
-    <table>
+    <table id="impactTable">
         <thead>
             <tr>
                 <th>油品</th>
                 <th>原价</th>
                 <th>促销价</th>
+                <th>优惠</th>
                 <th>正常销量</th>
                 <th>促销销量</th>
                 <th>销量增长</th>
@@ -78,12 +112,13 @@
                 <th>利润变化</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="impactTableBody">
             {% for item in impact_data.fuel_items %}
             <tr>
                 <td><strong>{{ item.fuel_name }}</strong></td>
                 <td>¥{{ '%.2f'|format(item.original_price) }}</td>
                 <td style="color: #ff4d4f; font-weight: 600;">¥{{ '%.2f'|format(item.promo_price) }}</td>
+                <td style="color: #52c41a;">-¥{{ '%.2f'|format(item.discount) }}</td>
                 <td>{{ '%.0f'|format(item.normal_volume) }} 升</td>
                 <td>{{ '%.0f'|format(item.promo_volume) }} 升</td>
                 <td style="color: #52c41a;">+{{ item.volume_increase }}%</td>
@@ -106,6 +141,8 @@
             <tr>
                 <th>油品</th>
                 <th>优惠幅度</th>
+                <th>原价</th>
+                <th>促销价</th>
                 <th>开始时间</th>
                 <th>结束时间</th>
                 <th>状态</th>
@@ -116,6 +153,8 @@
             <tr>
                 <td>{{ promo.fuel.name }}</td>
                 <td style="color: #ff4d4f; font-weight: 600;">-¥{{ '%.2f'|format(promo.discount) }}/升</td>
+                <td>¥{{ '%.2f'|format(promo.original_price) }}</td>
+                <td>¥{{ '%.2f'|format(promo.promo_price) }}</td>
                 <td>{{ promo.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>{{ promo.end_time.strftime('%Y-%m-%d %H:%M') if promo.end_time else '进行中' }}</td>
                 <td>
@@ -136,11 +175,73 @@
     <div class="card-title">💡 促销说明</div>
     <ul style="line-height: 1.8; color: #666; font-size: 14px; margin-left: 20px;">
         <li><strong>会员日促销</strong>：模拟每周会员日优惠活动，通过降价促进销量提升</li>
-        <li><strong>销量提升</strong>：促销日预计销量提升约 30%-60%，取决于优惠幅度</li>
-        <li><strong>利润测算</strong>：系统自动对比正常日与促销日的利润差异</li>
+        <li><strong>销量提升</strong>：促销日预计销量提升约 30%-60%，优惠幅度越大销量提升越多</li>
+        <li><strong>利润测算</strong>：系统自动对比正常日与促销日的利润差异，修改优惠金额可实时查看影响</li>
         <li>启动促销后，系统会自动生成当日模拟销售数据</li>
+        <li>促销结束后价格自动恢复，所有调价记录保留在价格历史中</li>
         <li>建议结合库存情况和竞争环境合理制定促销策略</li>
     </ul>
 </div>
+
+<script>
+let updateTimeout = null;
+
+function updatePromoPreview() {
+    clearTimeout(updateTimeout);
+    
+    const discount = parseFloat(document.getElementById('discountInput').value);
+    
+    if (isNaN(discount) || discount <= 0) {
+        return;
+    }
+    
+    document.getElementById('calcStatus').textContent = '测算中...';
+    
+    updateTimeout = setTimeout(() => {
+        fetch(`{{ url_for("calculate_promo_impact_api") }}?discount=${discount}&use_active=false`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    renderImpactData(data.data);
+                    document.getElementById('calcStatus').textContent = `基于优惠 ¥${discount.toFixed(2)} 测算`;
+                }
+            });
+    }, 300);
+}
+
+function renderImpactData(data) {
+    document.getElementById('profitDiff').textContent = 
+        (data.total_profit_diff >= 0 ? '+' : '') + data.total_profit_diff.toFixed(2);
+    document.getElementById('profitDiff').style.color = 
+        data.total_profit_diff >= 0 ? '#52c41a' : '#ff4d4f';
+    
+    document.getElementById('revenueDiff').textContent = 
+        (data.total_revenue_diff >= 0 ? '+' : '') + data.total_revenue_diff.toFixed(2);
+    
+    const statsCards = document.querySelectorAll('#impactStats .stat-value');
+    statsCards[0].textContent = '¥' + data.total_normal_profit.toFixed(2);
+    statsCards[1].textContent = '¥' + data.total_promo_profit.toFixed(2);
+    statsCards[1].style.color = data.total_profit_diff >= 0 ? '#52c41a' : '#ff4d4f';
+    
+    let tbody = '';
+    for (let item of data.fuel_items) {
+        tbody += `<tr>
+            <td><strong>${item.fuel_name}</strong></td>
+            <td>¥${item.original_price.toFixed(2)}</td>
+            <td style="color: #ff4d4f; font-weight: 600;">¥${item.promo_price.toFixed(2)}</td>
+            <td style="color: #52c41a;">-¥${item.discount.toFixed(2)}</td>
+            <td>${item.normal_volume.toFixed(0)} 升</td>
+            <td>${item.promo_volume.toFixed(0)} 升</td>
+            <td style="color: #52c41a;">+${item.volume_increase.toFixed(1)}%</td>
+            <td>¥${item.normal_profit.toFixed(2)}</td>
+            <td>¥${item.promo_profit.toFixed(2)}</td>
+            <td style="color: ${item.profit_diff >= 0 ? '#52c41a' : '#ff4d4f'}; font-weight: 600;">
+                ${item.profit_diff >= 0 ? '+' : ''}${item.profit_diff.toFixed(2)}
+            </td>
+        </tr>`;
+    }
+    document.getElementById('impactTableBody').innerHTML = tbody;
+}
+</script>
 
 {% endblock %}

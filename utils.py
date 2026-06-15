@@ -45,6 +45,31 @@ def get_latest_competitor_price(fuel_id):
         .order_by(CompetitorPrice.record_date.desc()).first()
     return latest.price if latest else None
 
+def get_latest_competitor_price_info(fuel_id):
+    latest = CompetitorPrice.query.filter_by(fuel_id=fuel_id)\
+        .order_by(CompetitorPrice.record_date.desc()).first()
+    if latest:
+        return {
+            'price': latest.price,
+            'record_date': latest.record_date,
+            'import_time': latest.created_at
+        }
+    return None
+
+def calculate_auto_price(fuel_id, rule):
+    competitor_price = get_latest_competitor_price(fuel_id)
+    if competitor_price is None:
+        return None
+    
+    if rule.rule_type == 'lower':
+        new_price = competitor_price - rule.price_diff
+    elif rule.rule_type == 'higher':
+        new_price = competitor_price + rule.price_diff
+    else:
+        new_price = competitor_price
+    
+    return round(new_price, 2)
+
 def predict_24h_sales(fuel_id):
     seven_days_ago = datetime.now() - timedelta(days=7)
     sales = SalesRecord.query.filter(
@@ -201,9 +226,12 @@ def simulate_member_day_sales(discount=0.5):
             db.session.add(sale)
             current_stock -= volume
 
-def calculate_promotion_impact():
+def calculate_promotion_impact(discount=None, use_active_promo=True):
     today = date.today()
     fuels = Fuel.query.all()
+    
+    active_promos = MemberPromotion.query.filter_by(is_active=True).all() if use_active_promo else []
+    promo_map = {p.fuel_id: p for p in active_promos}
     
     impact_data = []
     total_normal_profit = 0
@@ -221,13 +249,23 @@ def calculate_promotion_impact():
         avg_cost = get_moving_average_cost(fuel.id)
         original_price = fuel.current_price
         
-        normal_volume = base_daily
-        normal_revenue = normal_volume * original_price
-        normal_profit = normal_volume * (original_price - avg_cost)
+        active_promo = promo_map.get(fuel.id)
+        if active_promo and use_active_promo:
+            promo_discount = active_promo.discount
+            original_price_for_calc = active_promo.original_price
+        else:
+            promo_discount = discount if discount is not None else 0.5
+            original_price_for_calc = original_price
         
-        promo_discount = 0.5
-        promo_price = original_price - promo_discount
-        promo_volume = base_daily * 1.4
+        volume_factor = 1.0 + min(0.6, promo_discount * 0.8)
+        
+        promo_price = original_price_for_calc - promo_discount
+        
+        normal_volume = base_daily
+        normal_revenue = normal_volume * original_price_for_calc
+        normal_profit = normal_volume * (original_price_for_calc - avg_cost)
+        
+        promo_volume = base_daily * volume_factor
         promo_revenue = promo_volume * promo_price
         promo_profit = promo_volume * (promo_price - avg_cost)
         
@@ -237,7 +275,8 @@ def calculate_promotion_impact():
         
         impact_data.append({
             'fuel_name': fuel.name,
-            'original_price': round(original_price, 2),
+            'fuel_code': fuel.code,
+            'original_price': round(original_price_for_calc, 2),
             'promo_price': round(promo_price, 2),
             'discount': round(promo_discount, 2),
             'normal_volume': round(normal_volume, 0),
@@ -263,5 +302,7 @@ def calculate_promotion_impact():
         'total_profit_diff': round(total_promo_profit - total_normal_profit, 2),
         'total_normal_revenue': round(total_normal_revenue, 2),
         'total_promo_revenue': round(total_promo_revenue, 2),
-        'total_revenue_diff': round(total_promo_revenue - total_normal_revenue, 2)
+        'total_revenue_diff': round(total_promo_revenue - total_normal_revenue, 2),
+        'active_discount': round(promo_map[list(promo_map.keys())[0]].discount, 2) if active_promos and use_active_promo else None,
+        'is_promo_active': len(active_promos) > 0 and use_active_promo
     }

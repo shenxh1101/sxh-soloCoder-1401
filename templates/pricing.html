@@ -5,17 +5,85 @@
 <h2 class="page-title">💰 定价中心</h2>
 
 <div class="card">
-    <div class="card-title">🎯 当前价格</div>
-    <div class="grid-3">
+    <div class="card-title">
+        <span>🎯 当前价格与自动定价</span>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="batchPreview()" class="btn btn-sm btn-info">📊 批量试算</button>
+            <button onclick="batchApply()" class="btn btn-sm btn-success" id="batchApplyBtn" disabled>⚡ 一键批量应用</button>
+        </div>
+    </div>
+    <div class="grid-3" id="priceCards">
         {% for fuel in fuels %}
-        <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 20px; text-align: center;">
-            <div style="font-size: 16px; color: #666; margin-bottom: 10px;">{{ fuel.name }}</div>
+        {% set rule = fuel.id in pricing_rules|map(attribute='fuel_id')|list and pricing_rules|selectattr('fuel_id', '==', fuel.id)|first %}
+        {% set comp = competitor_prices.get(fuel.id) %}
+        {% set preview = auto_price_previews.get(fuel.id) %}
+        <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 20px; background: #fff;">
+            <div style="font-size: 16px; color: #666; margin-bottom: 10px; font-weight: 600;">{{ fuel.name }}</div>
             <div style="font-size: 36px; font-weight: 700; color: #1677ff;">¥{{ '%.2f'|format(fuel.current_price) }}</div>
             <div style="font-size: 12px; color: #999; margin-top: 5px;">
                 更新于 {{ fuel.price_update_time.strftime('%m-%d %H:%M') if fuel.price_update_time else '未知' }}
             </div>
+            
+            <div style="margin-top: 15px; padding: 12px; background: #fafafa; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="color: #666; font-size: 13px;">竞争对手价格：</span>
+                    <span style="font-weight: 600; color: {% if comp %}#ff4d4f{% else %}#999{% endif %};">
+                        {% if comp %}¥{{ '%.2f'|format(comp.price) }}{% else %}未导入{% endif %}
+                    </span>
+                </div>
+                {% if comp %}
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: #999;">
+                    <span>数据日期：{{ comp.record_date.strftime('%Y-%m-%d') }}</span>
+                    <span>导入：{{ comp.import_time.strftime('%m-%d %H:%M') }}</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            {% if preview %}
+            <div style="margin-top: 15px; padding: 12px; background: {% if preview.price_change > 0 %}#fff2f0{% elif preview.price_change < 0 %}#f6ffed{% else %}#f0f0f0{% endif %}; border-radius: 6px; border: 1px dashed {% if preview.price_change > 0 %}#ffccc7{% elif preview.price_change < 0 %}#b7eb8f{% else %}#d9d9d9{% endif %};">
+                <div style="font-size: 13px; color: #666; margin-bottom: 8px;">
+                    规则：比竞争对手{{ preview.rule_type_name }}{{ '%.2f'|format(preview.price_diff) }}元
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 13px; color: #666;">试算结果：</span>
+                    <div style="text-align: right;">
+                        <div style="font-size: 20px; font-weight: 700; color: {% if preview.price_change > 0 %}#ff4d4f{% elif preview.price_change < 0 %}#52c41a{% else %}#666{% endif %};">
+                            ¥{{ '%.2f'|format(preview.preview_price) }}
+                        </div>
+                        <div style="font-size: 12px; color: {% if preview.price_change > 0 %}#ff4d4f{% elif preview.price_change < 0 %}#52c41a{% else %}#999{% endif %};">
+                            {% if preview.price_change > 0 %}+{% endif %}{{ '%.2f'|format(preview.price_change) }}
+                            ({% if preview.price_change > 0 %}+{% endif %}{{ '%.2f'|format(preview.change_pct) }}%)
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                    计算：{{ '%.2f'|format(preview.competitor_price) }} 
+                    {% if preview.rule_type == 'lower' %}-{% elif preview.rule_type == 'higher' %}+{% endif %} 
+                    {{ '%.2f'|format(preview.price_diff) }} = {{ '%.2f'|format(preview.preview_price) }}
+                </div>
+            </div>
+            {% endif %}
+            
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <a href="{{ url_for('auto_apply_pricing', fuel_id=fuel.id) }}" class="btn btn-sm btn-success" style="flex: 1; text-align: center;" onclick="return confirm('确定应用 {{ fuel.name }} 的自动定价吗？')">
+                    立即应用
+                </a>
+            </div>
         </div>
         {% endfor %}
+    </div>
+</div>
+
+<div id="batchPreviewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #fff; padding: 24px; border-radius: 8px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;">
+        <h3 style="margin-top: 0; margin-bottom: 20px;">📊 批量定价试算结果</h3>
+        <div id="batchPreviewContent">
+            <p style="color: #999; text-align: center;">正在加载...</p>
+        </div>
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="closeBatchModal()" class="btn">取消</button>
+            <button onclick="batchApply()" class="btn btn-success" id="modalApplyBtn" disabled>⚡ 一键批量应用</button>
+        </div>
     </div>
 </div>
 
@@ -44,7 +112,7 @@
     </div>
     
     <div class="card">
-        <div class="card-title">⚙️ 自动定价规则</div>
+        <div class="card-title">⚙️ 自动定价规则设置</div>
         {% for fuel in fuels %}
             {% set rule = fuel.id in pricing_rules|map(attribute='fuel_id')|list and pricing_rules|selectattr('fuel_id', '==', fuel.id)|first %}
             <div style="border: 1px solid #f0f0f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
@@ -66,20 +134,6 @@
                         <button type="submit" class="btn btn-sm btn-primary">保存</button>
                     </div>
                 </form>
-                <div style="margin-top: 10px;">
-                    <a href="{{ url_for('auto_apply_pricing', fuel_id=fuel.id) }}" class="btn btn-sm btn-success">
-                        立即应用自动定价
-                    </a>
-                    {% set comp_price = fuel.id %}
-                    <span style="font-size: 12px; color: #999; margin-left: 10px;">
-                        最新竞争价：
-                        {% if competitor_prices is defined %}
-                            测试
-                        {% else %}
-                            请先导入
-                        {% endif %}
-                    </span>
-                </div>
             </div>
         {% endfor %}
     </div>
@@ -127,5 +181,75 @@
     <p style="color: #999; text-align: center; padding: 30px;">暂无价格调整记录</p>
     {% endif %}
 </div>
+
+<script>
+function batchPreview() {
+    fetch('{{ url_for("batch_preview_pricing") }}')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                let html = '<table><thead><tr><th>油品</th><th>当前价</th><th>竞争价</th><th>规则</th><th>试算价</th><th>变动</th></tr></thead><tbody>';
+                let hasChanges = false;
+                
+                for (let item of data.data) {
+                    let changeColor = item.price_change > 0 ? '#ff4d4f' : (item.price_change < 0 ? '#52c41a' : '#999');
+                    let changeText = item.price_change > 0 ? '+' + item.price_change.toFixed(2) : (item.price_change < 0 ? item.price_change.toFixed(2) : '0.00');
+                    
+                    if (item.needs_change) hasChanges = true;
+                    
+                    if (item.error) {
+                        html += `<tr>
+                            <td><strong>${item.fuel_name}</strong></td>
+                            <td>¥${item.current_price.toFixed(2)}</td>
+                            <td>${item.competitor_price ? '¥' + item.competitor_price.toFixed(2) : '-'}</td>
+                            <td colspan="3" style="color: #999; font-size: 13px;">${item.error}</td>
+                        </tr>`;
+                    } else {
+                        html += `<tr style="${item.needs_change ? 'background: #fffbe6;' : ''}">
+                            <td><strong>${item.fuel_name}</strong></td>
+                            <td>¥${item.current_price.toFixed(2)}</td>
+                            <td>¥${item.competitor_price.toFixed(2)}</td>
+                            <td>${item.rule_type_name}${item.price_diff.toFixed(2)}元</td>
+                            <td style="font-weight: 600;">¥${item.preview_price.toFixed(2)}</td>
+                            <td style="color: ${changeColor}; font-weight: 600;">${changeText}</td>
+                        </tr>`;
+                    }
+                }
+                
+                html += '</tbody></table>';
+                document.getElementById('batchPreviewContent').innerHTML = html;
+                document.getElementById('batchApplyBtn').disabled = !hasChanges;
+                document.getElementById('modalApplyBtn').disabled = !hasChanges;
+                document.getElementById('batchPreviewModal').style.display = 'flex';
+            }
+        });
+}
+
+function closeBatchModal() {
+    document.getElementById('batchPreviewModal').style.display = 'none';
+}
+
+function batchApply() {
+    if (!confirm('确定批量应用所有油品的自动定价吗？')) return;
+    
+    fetch('{{ url_for("batch_apply_pricing") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeBatchModal();
+            location.reload();
+        }
+    });
+}
+
+document.getElementById('batchPreviewModal').addEventListener('click', function(e) {
+    if (e.target === this) closeBatchModal();
+});
+</script>
 
 {% endblock %}

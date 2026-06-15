@@ -17,6 +17,14 @@
             </select>
         </div>
         <div class="form-group" style="margin-bottom: 0; min-width: 150px;">
+            <label>调整类型</label>
+            <select name="change_type">
+                <option value="">全部类型</option>
+                <option value="auto" {% if selected_type == 'auto' %}selected{% endif %}>自动调整</option>
+                <option value="manual" {% if selected_type == 'manual' %}selected{% endif %}>手动调整</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 0; min-width: 150px;">
             <label>时间范围</label>
             <select name="days">
                 <option value="7" {% if days == 7 %}selected{% endif %}>最近7天</option>
@@ -26,6 +34,7 @@
             </select>
         </div>
         <button type="submit" class="btn btn-primary">查询</button>
+        <button type="button" class="btn" onclick="resetFilters()">重置</button>
     </form>
 </div>
 
@@ -46,13 +55,14 @@
                 <th>变动幅度</th>
                 <th>调整类型</th>
                 <th>原因说明</th>
+                <th>操作</th>
             </tr>
         </thead>
         <tbody>
             {% for ph in price_histories %}
             {% set change = ph.new_price - ph.old_price %}
             {% set change_pct = (change / ph.old_price * 100) if ph.old_price else 0 %}
-            <tr>
+            <tr id="row-{{ ph.id }}">
                 <td>{{ loop.index }}</td>
                 <td style="font-size: 13px;">{{ ph.change_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                 <td><span class="tag tag-blue">{{ ph.fuel.name }}</span></td>
@@ -70,6 +80,13 @@
                     </span>
                 </td>
                 <td style="font-size: 13px; color: #666; max-width: 200px;">{{ ph.reason or '-' }}</td>
+                <td>
+                    <button onclick="rollbackPrice({{ ph.id }}, '{{ ph.fuel.name }}', {{ ph.old_price }})" 
+                            class="btn btn-sm btn-warning" 
+                            title="回滚到此次调价前的价格 ¥{{ '%.2f'|format(ph.old_price) }}">
+                        ↩️ 回滚
+                    </button>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -84,9 +101,42 @@
     <ul style="line-height: 1.8; color: #666; font-size: 14px; margin-left: 20px;">
         <li><strong>手动调整</strong>：由人工操作的价格调整，记录调整原因</li>
         <li><strong>自动调整</strong>：根据定价规则和竞争对手价格自动调整</li>
+        <li><strong>价格回滚</strong>：点击"回滚"按钮可将价格恢复到此次调价前的价格，回滚操作会留下新的追溯记录</li>
         <li>价格调整记录保留完整历史，可追溯近30天内所有调价操作</li>
         <li>点击"定价中心"可进行新的价格调整</li>
     </ul>
 </div>
+
+<script>
+function resetFilters() {
+    window.location.href = '{{ url_for("price_history") }}';
+}
+
+function rollbackPrice(historyId, fuelName, oldPrice) {
+    if (!confirm(`确定要将 ${fuelName} 的价格回滚到 ¥${oldPrice.toFixed(2)} 吗？\n\n回滚操作会生成一条新的调整记录，方便追溯。`)) {
+        return;
+    }
+    
+    fetch(`/price/rollback/${historyId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+            location.reload();
+        } else {
+            alert('⚠️ ' + data.message);
+        }
+    })
+    .catch(err => {
+        alert('❌ 回滚失败，请稍后重试');
+        console.error(err);
+    });
+}
+</script>
 
 {% endblock %}
