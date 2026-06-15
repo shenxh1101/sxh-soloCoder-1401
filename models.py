@@ -16,6 +16,7 @@ class Fuel(db.Model):
     sales_records = db.relationship('SalesRecord', backref='fuel', lazy='dynamic')
     price_histories = db.relationship('PriceHistory', backref='fuel', lazy='dynamic')
     competitor_prices = db.relationship('CompetitorPrice', backref='fuel', lazy='dynamic')
+    member_promotions = db.relationship('MemberPromotion', backref='fuel', lazy='dynamic')
     
     def __repr__(self):
         return f'<Fuel {self.name}>'
@@ -114,6 +115,8 @@ class MemberPromotion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     fuel_id = db.Column(db.Integer, db.ForeignKey('fuels.id'), nullable=False)
     discount = db.Column(db.Float, nullable=False)
+    original_price = db.Column(db.Float, nullable=False)
+    promo_price = db.Column(db.Float, nullable=False)
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=False)

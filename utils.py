@@ -257,7 +257,7 @@ def calculate_promotion_impact():
         total_promo_revenue += promo_revenue
     
     return {
-        'items': impact_data,
+        'fuel_items': impact_data,
         'total_normal_profit': round(total_normal_profit, 2),
         'total_promo_profit': round(total_promo_profit, 2),
         'total_profit_diff': round(total_promo_profit - total_normal_profit, 2),

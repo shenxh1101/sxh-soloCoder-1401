@@ -119,6 +119,10 @@ def pricing():
         fuel = Fuel.query.get(fuel_id)
         old_price = fuel.current_price
         
+        if abs(new_price - old_price) < 0.001:
+            flash(f'{fuel.name} 价格无需调整，已为 {new_price:.2f} 元/升', 'info')
+            return redirect(url_for('pricing'))
+        
         fuel.current_price = new_price
         fuel.price_update_time = datetime.now()
         
@@ -187,15 +191,25 @@ def auto_apply_pricing(fuel_id):
     old_price = fuel.current_price
     
     if rule.rule_type == 'lower':
-        new_price = competitor_price + rule.price_diff
-    elif rule.rule_type == 'higher':
         new_price = competitor_price - rule.price_diff
+    elif rule.rule_type == 'higher':
+        new_price = competitor_price + rule.price_diff
     else:
         new_price = competitor_price
     
     new_price = round(new_price, 2)
+    
+    if abs(new_price - old_price) < 0.001:
+        flash(f'{fuel.name} 价格无需调整，已为 {new_price:.2f} 元/升', 'info')
+        return redirect(url_for('pricing'))
+    
     fuel.current_price = new_price
     fuel.price_update_time = datetime.now()
+    
+    if rule.rule_type == 'same':
+        reason_text = '自动定价：与竞争对手价格持平'
+    else:
+        reason_text = f'自动定价：比竞争对手{rule.rule_type_name}{abs(rule.price_diff):.2f}元'
     
     price_history = PriceHistory(
         fuel_id=fuel_id,
@@ -203,7 +217,7 @@ def auto_apply_pricing(fuel_id):
         new_price=new_price,
         change_time=datetime.now(),
         change_type='auto',
-        reason=f'自动定价：比竞争对手{rule.rule_type_name}{abs(rule.price_diff):.2f}元'
+        reason=reason_text
     )
     db.session.add(price_history)
     db.session.commit()
@@ -346,28 +360,69 @@ def member_promotion():
         
         if action == 'activate':
             fuels = Fuel.query.all()
+            now = datetime.now()
+            
+            simulate_member_day_sales(discount)
+            
             for fuel in fuels:
                 mp = MemberPromotion.query.filter_by(fuel_id=fuel.id, is_active=True).first()
                 if not mp:
+                    original_price = fuel.current_price
+                    promo_price = round(original_price - discount, 2)
+                    
                     mp = MemberPromotion(
                         fuel_id=fuel.id,
                         discount=discount,
-                        start_time=datetime.now(),
+                        original_price=original_price,
+                        promo_price=promo_price,
+                        start_time=now,
                         is_active=True
                     )
                     db.session.add(mp)
+                    
+                    old_price = fuel.current_price
+                    fuel.current_price = promo_price
+                    fuel.price_update_time = now
+                    
+                    price_history = PriceHistory(
+                        fuel_id=fuel.id,
+                        old_price=old_price,
+                        new_price=promo_price,
+                        change_time=now,
+                        change_type='auto',
+                        reason=f'会员日促销：每升立减{discount:.2f}元'
+                    )
+                    db.session.add(price_history)
             
-            simulate_member_day_sales(discount)
             db.session.commit()
-            flash('会员日促销已激活，已模拟当日销售数据', 'success')
+            flash('会员日促销已激活，价格已自动调整，已模拟当日销售数据', 'success')
         
         elif action == 'deactivate':
             active_promos = MemberPromotion.query.filter_by(is_active=True).all()
+            now = datetime.now()
             for promo in active_promos:
                 promo.is_active = False
-                promo.end_time = datetime.now()
+                promo.end_time = now
+                
+                fuel = Fuel.query.get(promo.fuel_id)
+                old_price = fuel.current_price
+                original_price = promo.original_price
+                
+                fuel.current_price = original_price
+                fuel.price_update_time = now
+                
+                price_history = PriceHistory(
+                    fuel_id=promo.fuel_id,
+                    old_price=old_price,
+                    new_price=original_price,
+                    change_time=now,
+                    change_type='auto',
+                    reason='结束会员日促销，恢复原价'
+                )
+                db.session.add(price_history)
+            
             db.session.commit()
-            flash('会员日促销已结束', 'success')
+            flash('会员日促销已结束，价格已恢复原价', 'success')
         
         return redirect(url_for('member_promotion'))
     
@@ -431,9 +486,9 @@ def init_db():
             db.session.commit()
             
             initial_intakes = [
-                (1, 30000, 7.20),
-                (2, 25000, 7.65),
-                (3, 28000, 6.90)
+                (1, 48000, 7.20),
+                (2, 42000, 7.65),
+                (3, 45000, 6.90)
             ]
             for fid, vol, cost in initial_intakes:
                 intake = IntakeRecord(
@@ -441,14 +496,14 @@ def init_db():
                     volume=vol,
                     cost_price=cost,
                     supplier='初始库存',
-                    intake_time=datetime.now() - timedelta(days=7)
+                    intake_time=datetime.now() - timedelta(days=4)
                 )
                 db.session.add(intake)
             
-            generate_simulated_sales(days=7)
+            generate_simulated_sales(days=3)
             
             db.session.commit()
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
